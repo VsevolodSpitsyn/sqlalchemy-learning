@@ -179,6 +179,7 @@ def get_grouped_values(session: SessionType) -> None:
 
 
 def main():
+
     # Base.metadata.drop_all(engine)
     # Base.metadata.create_all(engine)
 
@@ -190,7 +191,7 @@ def main():
 
     # john = get_user_by_username(session, "John")
     # sam = get_user_by_username(session, "Sam")
-    #
+
     # author_john = create_author_for_user(session, "John Smith", user=john)
     # author_sam = create_author_for_user(session, "Samuel L.", user=sam)
 
@@ -201,16 +202,19 @@ def main():
     # author_sam = get_author_by_username(session, "Sam")
     # get_author_by_username(session, "nick")
     # get_user_by_author_name_math(session, "smit")
-    #
+
+
     # create_posts_for_author(
     #     session, author=author_john, posts_titles=("SQL Lesson", "ORM Lesson")
     # )
-
     # create_posts_for_author(session, author=author_sam, posts_titles=("LOL", "ORM "))
+
+
     # fetch_authors_with_posts_and_users(session)
     # fetch_users_with_authors_and_posts(session)
     # get_count_items(session, Post)
     # get_grouped_values(session)
+
     session.close()
 
 

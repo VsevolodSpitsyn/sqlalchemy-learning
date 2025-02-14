@@ -13,6 +13,7 @@ class User(TimestampMixin, Base):
     username = Column(String(20), unique=True, nullable=False)
     is_staff = Column(Boolean, nullable=False, default=False, server_default="FALSE")
     author = relationship("Author", back_populates="user", uselist=False)
+    orders = relationship("Order", back_populates="user")
 
     def __str__(self):
         return (

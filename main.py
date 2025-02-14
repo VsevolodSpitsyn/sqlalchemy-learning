@@ -1,7 +1,17 @@
 from typing import Iterable, Type
-from sqlalchemy.orm import Session as SessionType, joinedload
-from sqlalchemy import func
-from models import Base, Session, User, Author, Post
+from sqlalchemy.orm import Session as SessionType, joinedload, noload, selectinload, aliased
+from sqlalchemy import func, or_
+from models import (
+    Base,
+    Session,
+    User,
+    Author,
+    Post,
+    Tag,
+    Product,
+    Order,
+    ProductOrder
+)
 from models.base import engine
 
 
@@ -20,9 +30,9 @@ def get_user_by_username(session: SessionType, username: str) -> User:
 
 
 def create_author_for_user(
-    session: SessionType,
-    author_name: str,
-    user: User,
+        session: SessionType,
+        author_name: str,
+        user: User,
 ) -> Author:
     # author = Author(name=author_name, user_id=user.id)
     author = Author(name=author_name, user=user)
@@ -65,7 +75,7 @@ def get_author_by_username(session: SessionType, username: str) -> Author | None
 
 
 def get_user_by_author_name_math(
-    session: SessionType, author_name_part: str
+        session: SessionType, author_name_part: str
 ) -> list[User]:
     users = (
         session.query(User)
@@ -80,7 +90,7 @@ def get_user_by_author_name_math(
 
 
 def create_posts_for_author(
-    session: SessionType, author: Author, posts_titles: Iterable[str]
+        session: SessionType, author: Author, posts_titles: Iterable[str]
 ) -> list[Post]:
     posts = []
     for title in posts_titles:
@@ -178,8 +188,183 @@ def get_grouped_values(session: SessionType) -> None:
         print("--- avg rating", res.avg_rating)
 
 
-def main():
+def create_tags(session: SessionType, names: list[str]):
+    tags = []
+    for name in names:
+        tag = Tag(name=name)
+        session.add(tag)
+        tags.append(tag)
 
+    session.commit()
+    print("created tags", tags)
+    return tags
+
+
+def associate_posts_with_tags(session: SessionType):
+    posts = session.query(Post).options(noload(Post.tags)).all()
+    tags = session.query(Tag).all()
+
+    tags_dict = {tag.name: tag for tag in tags}
+
+    tag_python = tags_dict["python"]
+    tag_sqla = tags_dict["sqlalchemy"]
+    tag_news = tags_dict["news"]
+    tag_lesson = tags_dict["lesson"]
+    tag_postgres = tags_dict["postgres"]
+    tag_sql = tags_dict["SQL"]
+
+    for post in posts:
+        if "sqlalchemy" in post.title.lower():
+            post.tags.append(tag_sqla)
+        if "lesson" in post.title.lower():
+            post.tags.append(tag_lesson)
+        if "news" in post.title.lower():
+            post.tags.append(tag_news)
+        if "python" in post.title.lower():
+            post.tags.append(tag_python)
+        if "postgres" in post.title.lower():
+            post.tags.append(tag_postgres)
+        if "sql" in post.title.lower():
+            post.tags.append(tag_sql)
+
+    session.commit()
+
+    return posts
+
+
+def get_posts_with_tags(session: SessionType):
+    posts = session.query(Post).options(selectinload(Post.tags)).all()
+    print("found posts", posts)
+    for post in posts:
+        print("--post", post.id, post.title, "-tags", post.tags)
+
+
+def get_post_add_tag_and_remove(session: SessionType):
+    post = (session.query(Post)
+            .filter(Post.title.ilike('python'))
+            .options(selectinload(Post.tags))
+            .first())
+
+    if not post:
+        print("post not found")
+        return
+
+    tag = session.query(Tag).filter_by(name="news").one()
+    print("post with tags", post, post.tags)
+
+    post.tags.append(tag)
+    session.commit()
+    print("post tags", post.tags)
+
+    post.tags.remove(tag)
+    session.commit()
+    print("post tags", post.tags)
+
+
+def get_posts_by_tag(session: SessionType, tag_name: str):
+    posts = (session.query(Post)
+             .join(Post.tags)
+             .filter(Tag.name == tag_name)
+             .options(selectinload(Post.tags))
+             .all())
+    print("found posts for tag", tag_name)
+    for post in posts:
+        print("--post -", f"{post.title!r}")
+        print("-tag", post.tags)
+
+
+def get_posts_by_tags(session: SessionType, tag_names: list[str]):
+    posts = (
+        session.query(Post)
+        .join(Post.tags)
+        .filter(or_(*(Tag.name == name for name in tag_names)))
+        .options(selectinload(Post.tags))
+        .all()
+    )
+    print("found posts for tags", tag_names)
+    for post in posts:
+        print("--post -", post)
+        print("-tag", post.tags)
+
+    return posts
+
+
+def get_posts_by_all_tags(session: SessionType, *tag_names):
+    filters = []
+    q_posts = session.query(Post)
+
+    for index, name in enumerate(tag_names, start=1):
+        tags_table: Tag = aliased(Tag, name=f"tags_{index}")
+        q_posts = q_posts.join(tags_table, Post.tags)
+        filters.append(tags_table.name == name)
+
+    posts = (q_posts
+             .filter(*filters)
+             .options(selectinload(Post.tags))
+             .all()
+             )
+    print("found posts for all tags", tag_names)
+    for post in posts:
+        print("-- post -", post)
+        print("- post tags -", post.tags)
+
+    return posts
+
+
+def create_product(session: SessionType, name: str, price: int) -> Product:
+    product = Product(name=name, price=price)
+    session.add(product)
+    session.commit()
+    print("created product", product)
+    return product
+
+
+def create_order_with_products(session: SessionType, address: str, comment: str, user: User,
+                               *products: Product) -> Order:
+    order = Order(
+        address=address,
+        comment=comment,
+        user=user
+    )
+    session.add(order)
+    for product in products:
+        product_order = ProductOrder()
+        product_order.product = product
+        product_order.order = order
+        product_order.products_count = 2
+        product_order.unit_price = product.price
+        session.add(product_order)
+    session.commit()
+    return order
+
+
+def get_product_by_name(session: SessionType, name: str) -> Product:
+    product = session.query(Product).filter_by(name=name).one()
+    return product
+
+
+def get_orders_details(session: SessionType) -> list[Order]:
+    orders = (session.query(Order)
+              .options(
+        joinedload(Order.user),
+        joinedload(Order.products).joinedload(ProductOrder.product)
+    )
+              .all()
+              )
+    for order in orders:
+        print("order for user", order.user)
+        print("order to addr", order.address)
+        print("order with comment", order.comment)
+        print("order.products", order.products)
+        for product_order in order.products:  # type ProductOrder
+            print("product for", product_order.product)
+            print("product count", product_order.products_count)
+            print("product for", product_order.unit_price)
+
+    return orders
+
+
+def main():
     # Base.metadata.drop_all(engine)
     # Base.metadata.create_all(engine)
 
@@ -190,7 +375,7 @@ def main():
     # sam = create_user(session, "Sam")
 
     # john = get_user_by_username(session, "John")
-    # sam = get_user_by_username(session, "Sam")
+    sam = get_user_by_username(session, "Sam")
 
     # author_john = create_author_for_user(session, "John Smith", user=john)
     # author_sam = create_author_for_user(session, "Samuel L.", user=sam)
@@ -203,17 +388,49 @@ def main():
     # get_author_by_username(session, "nick")
     # get_user_by_author_name_math(session, "smit")
 
-
     # create_posts_for_author(
     #     session, author=author_john, posts_titles=("SQL Lesson", "ORM Lesson")
     # )
-    # create_posts_for_author(session, author=author_sam, posts_titles=("LOL", "ORM "))
-
+    # create_posts_for_author(session, author=author_sam, posts_titles=("sql", "news", "python", "postgres"))
 
     # fetch_authors_with_posts_and_users(session)
     # fetch_users_with_authors_and_posts(session)
     # get_count_items(session, Post)
     # get_grouped_values(session)
+
+    # tags = create_tags(
+    #     session,
+    #     names=[
+    #     "news",
+    #     "python",
+    #     "lesson",
+    #     "sqlalchemy",
+    #     "postgres",
+    #     "SQL"
+    # ]
+    # )
+    # associate_posts_with_tags(session)
+    # get_posts_by_tag(session, "python")
+    # get_posts_with_tags(session)
+    # get_post_add_tag_and_remove(session)
+    # get_posts_by_tags(session, ["python", "lesson"])
+    # get_posts_by_all_tags(session, "python", "lesson")
+
+    # laptop = create_product(session, "Laptop", 1999)
+    # desktop = create_product(session, "Desktop", 2500)
+
+    # laptop = get_product_by_name(session, "Laptop")
+    # desktop = get_product_by_name(session, "Desktop")
+
+    # create_order_with_products(
+    #     session,
+    #     "GG Lane 2",
+    #     "",
+    #     sam,
+    #     laptop,
+    #     desktop )
+
+    # get_orders_details(session)
 
     session.close()
 

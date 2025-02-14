@@ -2,7 +2,7 @@ from sqlalchemy import Column, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 from . import Base
 from .mixins import TimestampMixin
-
+from .posts_tags_association import posts_tags_association_table
 
 class Post(TimestampMixin, Base):
     title = Column(
@@ -12,6 +12,7 @@ class Post(TimestampMixin, Base):
     rating = Column(Integer, nullable=False, default=0, server_default="0")
     author_id = Column(Integer, ForeignKey("blog_authors.id"), nullable=False)
     author = relationship("Author", back_populates="posts")
+    tags = relationship("Tag", back_populates="posts", secondary= posts_tags_association_table )
 
     def __str__(self):
         return (
